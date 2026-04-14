@@ -56,6 +56,11 @@ func SortByRefAdaptive[T any](arr []T, less func(a, b *T) bool) {
 	unstableSortRefAdaptive(arr, less)
 }
 
+// SortByRefHybrid uses an experimental hybrid of ipnsort, glidesort and pdqsort ideas.
+func SortByRefHybrid[T any](arr []T, less func(a, b *T) bool) {
+	unstableSortRefHybrid(arr, less)
+}
+
 func unstableSortRefAdaptive[T any, F ~func(a, b *T) bool](v []T, less F) {
 	var zero T
 	sz := unsafe.Sizeof(zero)
@@ -101,6 +106,24 @@ func unstableSortRefDirect[T any, F ~func(a, b *T) bool](v []T, less F) {
 	}
 
 	ipnsortRef(v, less)
+}
+
+func unstableSortRefHybrid[T any, F ~func(a, b *T) bool](v []T, less F) {
+	var zero T
+	if unsafe.Sizeof(zero) == 0 {
+		return
+	}
+	if len(v) < 2 {
+		return
+	}
+
+	const maxLenAlwaysInsertionSort = 20
+	if len(v) <= maxLenAlwaysInsertionSort {
+		insertionSortShiftLeftRef(v, 1, less)
+		return
+	}
+
+	ipnsortHybridRef(v, less)
 }
 
 func sortByRefIndirect[T any, F ~func(a, b *T) bool](v []T, less F) {
@@ -170,6 +193,67 @@ func ipnsortRef[T any, F ~func(a, b *T) bool](v []T, less F) {
 	quicksortRef(v, nil, limit, threshold, strategy, less)
 }
 
+func ipnsortHybridRef[T any, F ~func(a, b *T) bool](v []T, less F) {
+	runLen, wasReversed := findExistingRunRef(v, less)
+	if runLen == len(v) {
+		if wasReversed {
+			reverse(v)
+		}
+		return
+	}
+
+	strategy := chooseUnstableSmallSort[T]()
+	threshold := smallSortRefThresholdFromStrategy(strategy)
+	limit := 2 * ilog2(len(v)|1)
+	if !shouldUseHybridPathRef(v, runLen, threshold, less) {
+		quicksortRef(v, nil, limit, threshold, strategy, less)
+		return
+	}
+
+	const partialInsertionSortLimit = 8
+	if len(v) <= 4096 && runLen >= threshold && uint64(runLen)*uint64(runLen) >= uint64(len(v))/2 {
+		if wasReversed {
+			reverse(v[:runLen])
+		}
+		if partialInsertionSortRef(v, runLen, partialInsertionSortLimit, less) {
+			return
+		}
+	}
+
+	quicksortHybridRef(v, nil, limit, threshold, strategy, less)
+}
+
+func shouldUseHybridPathRef[T any, F ~func(a, b *T) bool](v []T, runLen int, threshold int, less F) bool {
+	_ = runLen
+	_ = threshold
+	n := len(v)
+	if n < 64 {
+		return false
+	}
+
+	const maxSamples = 32
+	step := (n - 1) / maxSamples
+	if step < 1 {
+		step = 1
+	}
+
+	base := getBasePtr(v)
+	eqCount := 0
+	sampleCount := 0
+	for i := 1; i < n && sampleCount < maxSamples; i += step {
+		a := ptrAdd(base, i-1)
+		b := ptrAdd(base, i)
+		if !less(a, b) && !less(b, a) {
+			eqCount++
+		}
+		sampleCount++
+	}
+	if sampleCount == 0 {
+		return false
+	}
+	return eqCount*4 >= sampleCount
+}
+
 func findExistingRunRef[T any, F ~func(a, b *T) bool](v []T, less F) (int, bool) {
 	n := len(v)
 	if n < 2 {
@@ -200,6 +284,37 @@ func insertionSortShiftLeftRef[T any, F ~func(a, b *T) bool](v []T, offset int, 
 	for i := offset; i < n; i++ {
 		insertTailAtRef(v, i, less)
 	}
+}
+
+func partialInsertionSortRef[T any, F ~func(a, b *T) bool](v []T, offset int, moveLimit int, less F) bool {
+	n := len(v)
+	if n < 2 {
+		return true
+	}
+	if offset < 1 {
+		offset = 1
+	}
+	if offset >= n {
+		return true
+	}
+
+	moves := 0
+	for i := offset; i < n; i++ {
+		if !less(&v[i], &v[i-1]) {
+			continue
+		}
+
+		j := i
+		for j > 0 && less(&v[j], &v[j-1]) {
+			v[j], v[j-1] = v[j-1], v[j]
+			j--
+		}
+		moves += i - j
+		if moves > moveLimit {
+			return false
+		}
+	}
+	return true
 }
 
 // insertTailAtRef inserts v[i] into v[:i] using adjacent swaps.
