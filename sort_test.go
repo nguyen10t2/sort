@@ -331,6 +331,106 @@ func BenchmarkSortVsGoDefault(b *testing.B) {
 	}
 }
 
+func BenchmarkHybridWideBigRef(b *testing.B) {
+	sizes := []int{1_000, 4_000, 8_000, 16_000, 64_000}
+	patterns := []string{"random", "duplicates", "nearly-sorted", "sorted", "reversed", "organ-pipe"}
+
+	sorters := []struct {
+		name string
+		fn   func([]Big)
+	}{
+		{
+			name: "SortByRef",
+			fn: func(v []Big) {
+				SortByRef(v, func(a, b *Big) bool { return a.Key < b.Key })
+			},
+		},
+		{
+			name: "SortByRefDirect",
+			fn: func(v []Big) {
+				SortByRefDirect(v, func(a, b *Big) bool { return a.Key < b.Key })
+			},
+		},
+		{
+			name: "SortByRefHybrid",
+			fn: func(v []Big) {
+				SortByRefHybrid(v, func(a, b *Big) bool { return a.Key < b.Key })
+			},
+		},
+	}
+
+	rng := rand.New(rand.NewSource(404))
+	for _, n := range sizes {
+		for _, pattern := range patterns {
+			base := generateBigs(n, pattern, rng)
+			caseName := pattern + "-" + strconv.Itoa(n)
+			b.Run(caseName, func(b *testing.B) {
+				for _, s := range sorters {
+					b.Run(s.name, func(b *testing.B) {
+						b.ReportAllocs()
+						work := make([]Big, len(base))
+						b.ResetTimer()
+						for i := 0; i < b.N; i++ {
+							copy(work, base)
+							s.fn(work)
+						}
+					})
+				}
+			})
+		}
+	}
+}
+
+func BenchmarkHybridWideIntRef(b *testing.B) {
+	sizes := []int{1_000, 4_000, 8_000, 16_000, 64_000}
+	patterns := []string{"random", "duplicates", "nearly-sorted", "sorted", "reversed", "organ-pipe"}
+
+	sorters := []struct {
+		name string
+		fn   func([]int)
+	}{
+		{
+			name: "SortByRef",
+			fn: func(v []int) {
+				SortByRef(v, func(a, b *int) bool { return *a < *b })
+			},
+		},
+		{
+			name: "SortByRefDirect",
+			fn: func(v []int) {
+				SortByRefDirect(v, func(a, b *int) bool { return *a < *b })
+			},
+		},
+		{
+			name: "SortByRefHybrid",
+			fn: func(v []int) {
+				SortByRefHybrid(v, func(a, b *int) bool { return *a < *b })
+			},
+		},
+	}
+
+	rng := rand.New(rand.NewSource(505))
+	for _, n := range sizes {
+		for _, pattern := range patterns {
+			base := generateInts(n, pattern, rng)
+			caseName := pattern + "-" + strconv.Itoa(n)
+			b.Run(caseName, func(b *testing.B) {
+				for _, s := range sorters {
+					b.Run(s.name, func(b *testing.B) {
+						b.ReportAllocs()
+						work := make([]int, len(base))
+						b.ResetTimer()
+						for i := 0; i < b.N; i++ {
+							copy(work, base)
+							s.fn(work)
+						}
+					})
+				}
+			})
+		}
+	}
+}
+
 func patternName(pattern string, size int) string {
 	return pattern + "-" + strconv.Itoa(size)
 }
