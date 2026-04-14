@@ -2,31 +2,36 @@ package sort
 
 func choosePivotRef[T any, F ~func(a, b *T) bool](v []T, less F) int {
 	n := len(v)
-	if n < 8 {
-		panic("choosePivotRef: input too short")
+	if n < 3 {
+		return n / 2
 	}
-
-	vBase := getBasePtr(v)
-	n8 := n / 8
-
-	a := vBase
-	b := ptrAdd(vBase, n8*4)
-	c := ptrAdd(vBase, n8*7)
-
-	if n < PSEUDO_MEDIAN_REC_THRESHOLD {
-		return ptrDiff(median3Ref(a, b, c, less), vBase)
+	if n < 40 {
+		vBase := getBasePtr(v)
+		return ptrDiff(median3Ref(vBase, ptrAdd(vBase, n/2), ptrAdd(vBase, n-1), less), vBase)
 	}
-	return ptrDiff(median3RecRef(a, b, c, n8, less), vBase)
+	return ptrDiff(nintherRef(v, less), getBasePtr(v))
 }
 
-func median3RecRef[T any, F ~func(a, b *T) bool](a, b, c *T, n int, less F) *T {
-	if n*8 >= PSEUDO_MEDIAN_REC_THRESHOLD {
-		n8 := n / 8
-		a = median3RecRef(a, ptrAdd(a, n8*4), ptrAdd(a, n8*7), n8, less)
-		b = median3RecRef(b, ptrAdd(b, n8*4), ptrAdd(b, n8*7), n8, less)
-		c = median3RecRef(c, ptrAdd(c, n8*4), ptrAdd(c, n8*7), n8, less)
-	}
-	return median3Ref(a, b, c, less)
+func nintherRef[T any, F ~func(a, b *T) bool](v []T, less F) *T {
+	n := len(v)
+	vBase := getBasePtr(v)
+	step := n / 8
+
+	p0 := vBase
+	p1 := ptrAdd(vBase, step*1)
+	p2 := ptrAdd(vBase, step*3)
+	p3 := ptrAdd(vBase, step*4)
+	p4 := ptrAdd(vBase, step*5)
+	p5 := ptrAdd(vBase, step*7)
+	p6 := ptrAdd(vBase, n-3)
+	p7 := ptrAdd(vBase, n-2)
+	p8 := ptrAdd(vBase, n-1)
+
+	m0 := median3Ref(p0, p1, p2, less)
+	m1 := median3Ref(p3, p4, p5, less)
+	m2 := median3Ref(p6, p7, p8, less)
+
+	return median3Ref(m0, m1, m2, less)
 }
 
 func median3Ref[T any, F ~func(a, b *T) bool](a, b, c *T, less F) *T {
@@ -41,3 +46,6 @@ func median3Ref[T any, F ~func(a, b *T) bool](a, b, c *T, less F) *T {
 	}
 	return a
 }
+
+// Deprecated: median3RecRef replaced by nintherRef
+// func median3RecRef ... (removed for simplicity, ninther is standard)
