@@ -91,6 +91,32 @@ func TestSortByRefHybridMatchesStdSort(t *testing.T) {
 	}
 }
 
+func TestSortByRefIndexMatchesStdSort(t *testing.T) {
+	rng := rand.New(rand.NewSource(911))
+
+	sizes := []int{0, 1, 2, 3, 7, 8, 9, 15, 16, 17, 31, 32, 33, 63, 64, 65, 127, 128, 1024}
+	patterns := []string{"random", "sorted", "reversed", "duplicates", "nearly-sorted", "organ-pipe"}
+
+	for _, size := range sizes {
+		for _, pattern := range patterns {
+			name := "index-ref-" + patternName(pattern, size)
+			t.Run(name, func(t *testing.T) {
+				input := generateInts(size, pattern, rng)
+
+				got := append([]int(nil), input...)
+				SortByRefIndex(got, func(a, b *int) bool { return *a < *b })
+
+				want := append([]int(nil), input...)
+				stdsort.Ints(want)
+
+				if !slices.Equal(got, want) {
+					t.Fatalf("mismatch for %s", name)
+				}
+			})
+		}
+	}
+}
+
 func TestSortByCustomComparator(t *testing.T) {
 	input := []int{5, 1, 9, 1, 0, 3, 3, 7}
 
@@ -186,6 +212,12 @@ func BenchmarkBigStructSorters(b *testing.B) {
 			name: "SortByRefHybrid",
 			fn: func(v []Big) {
 				SortByRefHybrid(v, func(a, b *Big) bool { return a.Key < b.Key })
+			},
+		},
+		{
+			name: "SortByRefIndex",
+			fn: func(v []Big) {
+				SortByRefIndex(v, func(a, b *Big) bool { return a.Key < b.Key })
 			},
 		},
 		{
@@ -357,6 +389,12 @@ func BenchmarkHybridWideBigRef(b *testing.B) {
 				SortByRefHybrid(v, func(a, b *Big) bool { return a.Key < b.Key })
 			},
 		},
+		{
+			name: "SortByRefIndex",
+			fn: func(v []Big) {
+				SortByRefIndex(v, func(a, b *Big) bool { return a.Key < b.Key })
+			},
+		},
 	}
 
 	rng := rand.New(rand.NewSource(404))
@@ -405,6 +443,12 @@ func BenchmarkHybridWideIntRef(b *testing.B) {
 			name: "SortByRefHybrid",
 			fn: func(v []int) {
 				SortByRefHybrid(v, func(a, b *int) bool { return *a < *b })
+			},
+		},
+		{
+			name: "SortByRefIndex",
+			fn: func(v []int) {
+				SortByRefIndex(v, func(a, b *int) bool { return *a < *b })
 			},
 		},
 	}

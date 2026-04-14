@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"slices"
 	"sort"
+	"sync"
 	"unsafe"
 )
 
@@ -44,8 +45,13 @@ func SortByRefDirect[T any](arr []T, less func(a, b *T) bool) {
 	unstableSortRefDirect(arr, less)
 }
 
-// SortByRefIndirect forces the indirect algorithm (allocates O(n) indices + visited).
+// SortByRefIndirect forces the indirect algorithm (index sort + cycle apply).
 func SortByRefIndirect[T any](arr []T, less func(a, b *T) bool) {
+	sortByRefIndirect(arr, less)
+}
+
+// SortByRefIndex is an explicit index-based variant (zero-copy partitioning + cycle apply).
+func SortByRefIndex[T any](arr []T, less func(a, b *T) bool) {
 	sortByRefIndirect(arr, less)
 }
 
@@ -132,7 +138,10 @@ func sortByRefIndirect[T any, F ~func(a, b *T) bool](v []T, less F) {
 		return
 	}
 
-	idx := make([]int, n)
+	scratch := acquireSortByRefScratch(n)
+	defer releaseSortByRefScratch(scratch)
+
+	idx := scratch.idx
 	for i := range idx {
 		idx[i] = i
 	}
@@ -141,13 +150,50 @@ func sortByRefIndirect[T any, F ~func(a, b *T) bool](v []T, less F) {
 		return less(&v[idx[i]], &v[idx[j]])
 	})
 
-	applyPermutationFromSources(v, idx)
+	applyPermutationFromSourcesWithVisited(v, idx, scratch.visited)
+}
+
+type sortByRefScratch struct {
+	idx     []int
+	visited []bool
+}
+
+var sortByRefScratchPool sync.Pool
+
+func acquireSortByRefScratch(n int) *sortByRefScratch {
+	if v := sortByRefScratchPool.Get(); v != nil {
+		s := v.(*sortByRefScratch)
+		if cap(s.idx) < n {
+			s.idx = make([]int, n)
+		}
+		if cap(s.visited) < n {
+			s.visited = make([]bool, n)
+		}
+		s.idx = s.idx[:n]
+		s.visited = s.visited[:n]
+		return s
+	}
+	return &sortByRefScratch{
+		idx:     make([]int, n),
+		visited: make([]bool, n),
+	}
+}
+
+func releaseSortByRefScratch(s *sortByRefScratch) {
+	s.idx = s.idx[:0]
+	s.visited = s.visited[:0]
+	sortByRefScratchPool.Put(s)
 }
 
 // applyPermutationFromSources transforms v in-place so that:
 //
 //	v[i] = old[v][src[i]]
 func applyPermutationFromSources[T any](v []T, src []int) {
+	visited := make([]bool, len(v))
+	applyPermutationFromSourcesWithVisited(v, src, visited)
+}
+
+func applyPermutationFromSourcesWithVisited[T any](v []T, src []int, visited []bool) {
 	n := len(v)
 	if n < 2 {
 		return
@@ -155,8 +201,11 @@ func applyPermutationFromSources[T any](v []T, src []int) {
 	if len(src) != n {
 		panic("applyPermutationFromSources: length mismatch")
 	}
-
-	visited := make([]bool, n)
+	if len(visited) < n {
+		panic("applyPermutationFromSourcesWithVisited: visited too short")
+	}
+	visited = visited[:n]
+	clear(visited)
 	for i := range n {
 		if visited[i] || src[i] == i {
 			visited[i] = true
