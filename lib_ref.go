@@ -10,18 +10,9 @@ import (
 
 // Sort sorts arr using the default ordering for type T.
 func Sort[T cmp.Ordered](arr []T) {
-	switch v := any(arr).(type) {
-	case []int:
-		sort.Ints(v)
-		return
-	case []float64:
-		sort.Float64s(v)
-		return
-	case []string:
-		sort.Strings(v)
-		return
-	}
-	slices.Sort(arr)
+	SortByRef(arr, func(a, b *T) bool {
+		return *a < *b
+	})
 }
 
 // SortBy sorts arr using a custom comparison function.
