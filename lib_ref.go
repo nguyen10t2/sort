@@ -27,19 +27,19 @@ func SortBy[T any](arr []T, compare func(a, b T) int) {
 //
 // Default behavior is standardized to the direct in-place algorithm for
 // predictable performance and zero extra O(n) memory.
-func SortByRef[T any](arr []T, less func(a, b *T) bool) {
+func SortByRef[T any, F ~func(a, b *T) bool](arr []T, less F) {
 	unstableSortRefDirect(arr, less)
 }
 
 // SortByRefDirect forces the direct in-place algorithm (no extra O(n) memory).
-func SortByRefDirect[T any](arr []T, less func(a, b *T) bool) {
+func SortByRefDirect[T any, F ~func(a, b *T) bool](arr []T, less F) {
 	unstableSortRefDirect(arr, less)
 }
 
 // SortByRefAdaptive may choose an indirect path for very large element sizes.
 //
 // NOTE: The indirect path allocates O(n) memory and is not always faster.
-func SortByRefAdaptive[T any](arr []T, less func(a, b *T) bool) {
+func SortByRefAdaptive[T any, F ~func(a, b *T) bool](arr []T, less F) {
 	unstableSortRefAdaptive(arr, less)
 }
 
